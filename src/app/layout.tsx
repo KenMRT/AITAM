@@ -20,8 +20,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className={roboto.className}>
-      <body>
+    <html lang="ja">
+      <body className={roboto.className}>
         <Providers>{children}</Providers>
       </body>
     </html>

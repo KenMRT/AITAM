@@ -1,0 +1,698 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { GoogleGenerativeAI, SchemaType, type Tool } from '@google/generative-ai';
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+const tools: Tool[] = [
+  {
+    functionDeclarations: [
+      {
+        name: 'create_project',
+        description: 'プロジェクトを新規作成する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            name: { type: SchemaType.STRING, description: 'プロジェクト名' },
+            description: { type: SchemaType.STRING, description: '説明' },
+            status: { type: SchemaType.STRING, description: 'ステータス: 提案（未定）/提案（高）/制作中/納品済' },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'list_projects',
+        description: 'プロジェクト一覧を取得する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            status: { type: SchemaType.STRING, description: 'ステータスでフィルタ' },
+            sort_by: { type: SchemaType.STRING, description: 'ソート基準: created_at/name/nearest_due' },
+          },
+        },
+      },
+      {
+        name: 'update_project',
+        description: 'プロジェクトを更新する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            project_id: { type: SchemaType.STRING, description: 'プロジェクトID' },
+            project_name: { type: SchemaType.STRING, description: 'プロジェクト名（ID不明時に名前で検索）' },
+            name: { type: SchemaType.STRING, description: '新しいプロジェクト名' },
+            description: { type: SchemaType.STRING, description: '新しい説明' },
+            status: { type: SchemaType.STRING, description: '新しいステータス' },
+          },
+        },
+      },
+      {
+        name: 'delete_project',
+        description: 'プロジェクトを削除する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            project_id: { type: SchemaType.STRING, description: 'プロジェクトID' },
+            project_name: { type: SchemaType.STRING, description: 'プロジェクト名（ID不明時）' },
+          },
+        },
+      },
+      {
+        name: 'create_task',
+        description: 'タスクを新規作成する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            project_id: { type: SchemaType.STRING, description: 'プロジェクトID' },
+            project_name: { type: SchemaType.STRING, description: 'プロジェクト名（ID不明時）' },
+            title: { type: SchemaType.STRING, description: 'タスクタイトル' },
+            description: { type: SchemaType.STRING, description: '説明' },
+            priority: { type: SchemaType.STRING, description: '優先度: 高/中/低' },
+            due_date: { type: SchemaType.STRING, description: '締切日 (YYYY-MM-DD)' },
+            status: { type: SchemaType.STRING, description: 'ステータス: 未着手/進行中/レビュー中/完了' },
+          },
+          required: ['title'],
+        },
+      },
+      {
+        name: 'update_task',
+        description: 'タスクを更新する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            task_id: { type: SchemaType.STRING, description: 'タスクID' },
+            task_title: { type: SchemaType.STRING, description: 'タスクタイトル（ID不明時に名前で検索）' },
+            title: { type: SchemaType.STRING, description: '新しいタイトル' },
+            description: { type: SchemaType.STRING, description: '新しい説明' },
+            status: { type: SchemaType.STRING, description: '新しいステータス' },
+            priority: { type: SchemaType.STRING, description: '新しい優先度' },
+            due_date: { type: SchemaType.STRING, description: '新しい締切日 (YYYY-MM-DD)' },
+          },
+        },
+      },
+      {
+        name: 'delete_task',
+        description: 'タスクを削除する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            task_id: { type: SchemaType.STRING, description: 'タスクID' },
+            task_title: { type: SchemaType.STRING, description: 'タスクタイトル（ID不明時）' },
+          },
+        },
+      },
+      {
+        name: 'list_tasks',
+        description: 'タスク一覧を取得する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            project_id: { type: SchemaType.STRING, description: 'プロジェクトID' },
+            project_name: { type: SchemaType.STRING, description: 'プロジェクト名' },
+            status: { type: SchemaType.STRING, description: 'ステータスでフィルタ' },
+            priority: { type: SchemaType.STRING, description: '優先度でフィルタ' },
+            sort_by: { type: SchemaType.STRING, description: 'ソート基準: due_date/priority/status/created_at' },
+          },
+        },
+      },
+      {
+        name: 'add_task_link',
+        description: 'タスクに関連リンクを追加する',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            task_id: { type: SchemaType.STRING, description: 'タスクID' },
+            task_title: { type: SchemaType.STRING, description: 'タスクタイトル（ID不明時）' },
+            url: { type: SchemaType.STRING, description: 'リンクURL' },
+            label: { type: SchemaType.STRING, description: 'リンクのラベル' },
+          },
+          required: ['url'],
+        },
+      },
+      {
+        name: 'navigate',
+        description: 'ユーザーを指定されたページに遷移させる。「タスクを表示して」「タスクリスト」「ダッシュボード見せて」「設定画面」「今日のタスク」「今週のタスク」などの表示・遷移リクエストに使う',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            page: { type: SchemaType.STRING, description: 'ページ名: dashboard/tasks/settings' },
+            project_id: { type: SchemaType.STRING, description: 'プロジェクトIDでタスクをフィルタする場合' },
+            project_name: { type: SchemaType.STRING, description: 'プロジェクト名でタスクをフィルタする場合（ID不明時）' },
+            date_filter: { type: SchemaType.STRING, description: '日付フィルタ: today（今日のタスク）/ week（今週のタスク）' },
+          },
+          required: ['page'],
+        },
+      },
+      {
+        name: 'update_settings',
+        description: 'アプリの表示設定を変更する。「完了を表示して」「完了を非表示にして」「完了タスクを隠して」などに使う',
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            show_completed: { type: SchemaType.BOOLEAN, description: '完了タスクを表示するか（true=表示/false=非表示）' },
+            show_delivered: { type: SchemaType.BOOLEAN, description: '納品済プロジェクトを表示するか（true=表示/false=非表示）' },
+            task_view: { type: SchemaType.STRING, description: 'タスクの表示形式: list（リスト表示）/ calendar（カレンダー表示）' },
+          },
+        },
+      },
+    ],
+  },
+];
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
+  const { message, currentProjectId, contextProjectName } = await request.json();
+
+  if (!message || typeof message !== 'string') {
+    return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
+  }
+
+  // ユーザーの現在のチームを取得
+  const { data: profile } = await supabase
+    .from('users')
+    .select('current_team_id')
+    .eq('id', user.id)
+    .single();
+
+  const teamId = profile?.current_team_id;
+  if (!teamId) {
+    return NextResponse.json({ error: 'チームが設定されていません' }, { status: 400 });
+  }
+
+  // 現在のプロジェクトコンテキストを構築（URL表示中 or 会話コンテキスト）
+  let currentProjectContext = '';
+  if (currentProjectId) {
+    const { data: currentProject } = await supabase
+      .from('projects')
+      .select('name')
+      .eq('id', currentProjectId)
+      .single();
+    if (currentProject) {
+      currentProjectContext = `\n- 【重要】現在のプロジェクト: ${currentProject.name}（ID: ${currentProjectId}）
+  → プロジェクト名の指定がない操作は、必ずこのプロジェクトに対して実行してください。確認の質問は不要です。
+  → project_idに「${currentProjectId}」を、project_nameに「${currentProject.name}」を使用してください。`;
+    }
+  } else if (contextProjectName) {
+    currentProjectContext = `\n- 【重要】会話中のプロジェクト: ${contextProjectName}
+  → プロジェクト名の指定がない操作は、必ずこのプロジェクトに対して実行してください。確認の質問は不要です。
+  → project_nameに「${contextProjectName}」を使用してください。
+  → ユーザーが別のプロジェクト名を明示的に指定した場合のみ、そちらに切り替えてください。`;
+  }
+
+  const models = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
+
+  const systemInstruction = `あなたはプロジェクト・タスク管理AIアシスタント「AITAM」です。
+ユーザーの自然言語の入力を解析し、適切なFunction Callを実行してください。
+操作結果は簡潔に日本語で回答してください。
+
+## コンテキスト
+- 現在のユーザーID: ${user.id}
+- 現在のチームID: ${teamId}
+- 今日の日付: ${new Date().toISOString().split('T')[0]}${currentProjectContext}
+
+## 自然言語の解釈ルール
+
+### 1. プロジェクト操作
+ユーザーの入力からプロジェクト名・ステータス・説明を抽出してください。
+- 「提案」「提案中」→ ステータス「提案（未定）」
+- 「提案（高）」「受注確度高い」「ほぼ確定」→ ステータス「提案（高）」
+- 「制作中」「進行中」「作業中」→ ステータス「制作中」
+- 「納品済」「完了」「納品した」→ ステータス「納品済」
+- 既存プロジェクト名が含まれていて更新内容がある場合 → update_project
+- 新規のプロジェクト名の場合 → create_project
+
+### 2. タスク操作
+ユーザーの入力からタスクタイトル・期限・優先度・ステータスを抽出してください。
+- 日付表現を YYYY-MM-DD に変換:
+  - 「来週中」→ 次の金曜日
+  - 「今週中」→ 今週の金曜日
+  - 「明日」→ 明日の日付
+  - 「○日まで」「○日締切」→ その日付
+  - 「○月○日」→ その日付
+  - 「来月末」→ 来月の最終日
+- 「今〜中」「〜待ち」「〜している」→ 期限なしタスク（due_date省略）、ステータスは「進行中」
+- 「急ぎ」「至急」「優先」→ 優先度「高」
+- 「後でいい」「余裕あり」→ 優先度「低」
+- プロジェクト名が明示されている場合はそのプロジェクトに紐付ける
+
+### 3. 複合操作
+1つの入力に複数の操作が含まれる場合、必要なFunction Callをすべて実行してください。
+例: 「テストプロジェクト：ステータスは提案中、来週中に提出予定」
+→ create_project(name: "テストプロジェクト", status: "提案（未定）") + create_task(project_name: "テストプロジェクト", title: "提出", due_date: "来週金曜")
+
+### 4. ページ遷移
+ユーザーが「タスクを表示して」「タスクリスト」「ダッシュボード見せて」「設定画面」などと言ったらnavigate関数を呼んでください。
+- 「タスク見せて」「タスクリスト」「タスク一覧」→ navigate(page: "tasks")
+- 「○○のタスク見せて」→ navigate(page: "tasks", project_name: "○○")
+- 「今日のタスク」→ navigate(page: "tasks", date_filter: "today")
+- 「今週のタスク」→ navigate(page: "tasks", date_filter: "week")
+- 「ダッシュボード」「ホーム」→ navigate(page: "dashboard")
+- 「設定」→ navigate(page: "settings")
+
+### 5. 名前のあいまい一致
+ユーザーがプロジェクト名やタスク名を省略・言い換えで指定することがあります。
+- 「テストプロジェクト２」→「テスト２」
+- 「事前打ち合わせ」→「事前うちあわせ」
+- 「Webサイトリニューアル」→「Webリニューアル」
+project_nameやtask_titleには、ユーザーが入力したそのままの文字列を渡してください。
+DB検索側であいまい一致で探します。完全一致でなくても構いません。
+
+### 6. 設定変更
+- 「完了を表示して」「完了タスクを表示」→ update_settings(show_completed: true)
+- 「完了を非表示にして」「完了を隠して」→ update_settings(show_completed: false)
+- 「納品済も表示して」「納品済のプロジェクトを表示」→ update_settings(show_delivered: true)
+- 「納品済を非表示にして」「納品済を隠して」→ update_settings(show_delivered: false)
+- 「（プロジェクト名）を表示して」で納品済プロジェクトの場合 → update_settings(show_delivered: true) + navigate(page: "tasks", project_name: "...")
+- 「カレンダー表示にして」「カレンダーで見たい」→ update_settings(task_view: "calendar")
+- 「リスト表示にして」「リストに戻して」→ update_settings(task_view: "list")
+
+### 7. 回答のルール
+- 操作結果は自然な日本語で簡潔に報告してください（例:「プロジェクト『テスト』を作成しました」）
+- コード、JSON、プログラミング言語の構文を回答に含めないでください
+- Function Callの引数や内部的なIDをユーザーに見せないでください
+- 曖昧な入力で確認が必要な場合は質問してください。合理的に推測できる場合は推測して実行し、結果を報告してください。`;
+
+  try {
+  // モデルをフォールバック付きで試行
+  let lastError: unknown = null;
+  for (const modelName of models) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction,
+        tools,
+      });
+
+      const chat = model.startChat();
+      let result = await chat.sendMessage(message);
+      let response = result.response;
+
+      // Function Callがなくなるまでループ（複合操作・連鎖対応）
+      let navigateUrl: string | null = null;
+      let contextProject: { id: string; name: string } | null = null;
+      let settingsUpdate: Record<string, boolean | string> | null = null;
+      const maxIterations = 5;
+      for (let i = 0; i < maxIterations; i++) {
+        const functionCalls = response.functionCalls();
+        if (!functionCalls || functionCalls.length === 0) break;
+
+        const functionResponses = [];
+        for (const fc of functionCalls) {
+          const execResult = await executeFunction(supabase, user.id, teamId, fc.name, fc.args || {});
+          if (fc.name === 'navigate' && execResult.url) {
+            navigateUrl = execResult.url;
+          }
+          // 操作したプロジェクト情報を保持
+          if (execResult.contextProject) {
+            contextProject = execResult.contextProject;
+          }
+          if (execResult.settingsUpdate) {
+            settingsUpdate = execResult.settingsUpdate;
+          }
+          functionResponses.push({
+            name: fc.name,
+            response: execResult,
+          });
+        }
+
+        result = await chat.sendMessage(
+          functionResponses.map((fr) => ({
+            functionResponse: {
+              name: fr.name,
+              response: fr.response,
+            },
+          }))
+        );
+        response = result.response;
+      }
+
+      return NextResponse.json({
+        reply: response.text(),
+        ...(navigateUrl && { navigateUrl }),
+        ...(contextProject && { contextProject }),
+        ...(settingsUpdate && { settingsUpdate }),
+      });
+    } catch (error) {
+      lastError = error;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      // 503/429なら次のモデルを試す、それ以外はすぐエラー
+      if (errMsg.includes('503') || errMsg.includes('429') || errMsg.includes('overloaded')) {
+        console.warn(`Model ${modelName} unavailable, trying fallback...`);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  // 全モデル失敗
+  console.error('All models failed:', lastError);
+  const lastErrMsg = lastError instanceof Error ? lastError.message : String(lastError);
+  return NextResponse.json({ error: `AIの応答に失敗しました: ${lastErrMsg}` }, { status: 500 });
+  } catch (error) {
+    console.error('Chat API error:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: `AIの応答に失敗しました: ${errMsg}` }, { status: 500 });
+  }
+}
+
+// あいまい一致スコア: searchの各文字がtarget内に順序通り含まれるか + 共通文字数
+function fuzzyScore(target: string, search: string): number {
+  const tLower = target.toLowerCase();
+  const sLower = search.toLowerCase();
+
+  // 完全一致
+  if (tLower === sLower) return 10000;
+  // 部分一致（含まれている）
+  if (tLower.includes(sLower)) return 5000 + (1000 - target.length);
+
+  // 各文字が順序通りに含まれるか（「テスト２」→「テストプロジェクト２」）
+  let si = 0;
+  for (let ti = 0; ti < tLower.length && si < sLower.length; ti++) {
+    if (tLower[ti] === sLower[si]) si++;
+  }
+  if (si === sLower.length) return 3000 + (1000 - target.length);
+
+  // 共通文字数ベースのスコア（漢字⇔ひらがな対応用）
+  // 検索文字列を2文字ずつのbigramに分割し、ターゲットに含まれるbigramの数でスコア
+  let bigramHits = 0;
+  for (let i = 0; i < sLower.length - 1; i++) {
+    const bigram = sLower.slice(i, i + 2);
+    if (tLower.includes(bigram)) bigramHits++;
+  }
+  if (bigramHits > 0) return bigramHits * 100 + (1000 - target.length);
+
+  // 1文字単位の共通文字数
+  let charHits = 0;
+  for (const c of sLower) {
+    if (tLower.includes(c)) charHits++;
+  }
+  // 半分以上の文字が一致していればスコアを付ける
+  if (charHits >= sLower.length * 0.5) return charHits * 10 + (1000 - target.length);
+
+  return 0;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fuzzyFindProject(supabase: any, teamId: string, searchName: string): Promise<string | null> {
+  // 1. まず部分一致を試す（高速パス）
+  const { data: exact } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('team_id', teamId)
+    .ilike('name', `%${searchName}%`)
+    .limit(1)
+    .single();
+  if (exact?.id) return exact.id;
+
+  // 2. 全プロジェクトを取得してあいまいスコアリング
+  const { data: all } = await supabase
+    .from('projects')
+    .select('id, name')
+    .eq('team_id', teamId);
+  if (!all || all.length === 0) return null;
+
+  const scored = all
+    .map((p: { id: string; name: string }) => ({ ...p, score: fuzzyScore(p.name, searchName) }))
+    .filter((p: { score: number }) => p.score > 0)
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+
+  return scored.length > 0 ? scored[0].id : null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fuzzyFindTask(supabase: any, teamId: string, searchTitle: string): Promise<string | null> {
+  // 1. 部分一致（高速パス）
+  const { data: exact } = await supabase
+    .from('tasks')
+    .select('id, projects!inner(team_id)')
+    .eq('projects.team_id', teamId)
+    .ilike('title', `%${searchTitle}%`)
+    .limit(1)
+    .single();
+  if (exact?.id) return exact.id;
+
+  // 2. 全タスクを取得してあいまいスコアリング
+  const { data: all } = await supabase
+    .from('tasks')
+    .select('id, title, projects!inner(team_id)')
+    .eq('projects.team_id', teamId);
+  if (!all || all.length === 0) return null;
+
+  const scored = all
+    .map((t: { id: string; title: string }) => ({ ...t, score: fuzzyScore(t.title, searchTitle) }))
+    .filter((t: { score: number }) => t.score > 0)
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+
+  return scored.length > 0 ? scored[0].id : null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function executeFunction(supabase: any, userId: string, teamId: string, name: string, args: any) {
+  switch (name) {
+    case 'create_project': {
+      const { data, error } = await supabase
+        .from('projects')
+        .insert({
+          user_id: userId,
+          team_id: teamId,
+          name: args.name,
+          description: args.description || null,
+          status: args.status || '提案（未定）',
+        })
+        .select()
+        .single();
+      if (error) return { error: error.message };
+      return { success: true, project: data, contextProject: { id: data.id, name: data.name } };
+    }
+
+    case 'list_projects': {
+      let query = supabase
+        .from('projects')
+        .select('*, tasks(id, status, due_date)')
+        .eq('team_id', teamId);
+
+      if (args.status) {
+        query = query.eq('status', args.status);
+      }
+
+      if (args.sort_by === 'name') {
+        query = query.order('name');
+      } else {
+        query = query.order('created_at', { ascending: false });
+      }
+
+      const { data, error } = await query;
+      if (error) return { error: error.message };
+
+      if (args.sort_by === 'nearest_due') {
+        data.sort((a: { tasks: { due_date: string | null; status: string }[] }, b: { tasks: { due_date: string | null; status: string }[] }) => {
+          const aDue = a.tasks.filter((t: { due_date: string | null; status: string }) => t.due_date && t.status !== '完了').sort((x: { due_date: string | null }, y: { due_date: string | null }) => new Date(x.due_date!).getTime() - new Date(y.due_date!).getTime())[0];
+          const bDue = b.tasks.filter((t: { due_date: string | null; status: string }) => t.due_date && t.status !== '完了').sort((x: { due_date: string | null }, y: { due_date: string | null }) => new Date(x.due_date!).getTime() - new Date(y.due_date!).getTime())[0];
+          if (!aDue && !bDue) return 0;
+          if (!aDue) return 1;
+          if (!bDue) return -1;
+          return new Date(aDue.due_date!).getTime() - new Date(bDue.due_date!).getTime();
+        });
+      }
+
+      return { projects: data };
+    }
+
+    case 'update_project': {
+      let projectId = args.project_id;
+      if (!projectId && args.project_name) {
+        projectId = await fuzzyFindProject(supabase, teamId, args.project_name);
+      }
+      if (!projectId) return { error: 'プロジェクトが見つかりません' };
+
+      const updates: Record<string, string> = {};
+      if (args.name) updates.name = args.name;
+      if (args.description) updates.description = args.description;
+      if (args.status) updates.status = args.status;
+
+      const { data, error } = await supabase
+        .from('projects')
+        .update(updates)
+        .eq('id', projectId)
+        .select()
+        .single();
+      if (error) return { error: error.message };
+      return { success: true, project: data, contextProject: { id: data.id, name: data.name } };
+    }
+
+    case 'delete_project': {
+      let projectId = args.project_id;
+      if (!projectId && args.project_name) {
+        projectId = await fuzzyFindProject(supabase, teamId, args.project_name);
+      }
+      if (!projectId) return { error: 'プロジェクトが見つかりません' };
+
+      const { error } = await supabase.from('projects').delete().eq('id', projectId);
+      return error ? { error: error.message } : { success: true };
+    }
+
+    case 'create_task': {
+      let projectId = args.project_id;
+      if (!projectId && args.project_name) {
+        projectId = await fuzzyFindProject(supabase, teamId, args.project_name);
+      }
+      if (!projectId) return { error: 'プロジェクトが見つかりません。プロジェクト名を指定してください。' };
+
+      // プロジェクト名を取得してコンテキストに返す
+      const { data: proj } = await supabase
+        .from('projects')
+        .select('name')
+        .eq('id', projectId)
+        .single();
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({
+          project_id: projectId,
+          user_id: userId,
+          title: args.title,
+          description: args.description || null,
+          priority: args.priority || '中',
+          due_date: args.due_date || null,
+          status: args.status || '未着手',
+        })
+        .select()
+        .single();
+      if (error) return { error: error.message };
+      return { success: true, task: data, contextProject: { id: projectId, name: proj?.name || '' } };
+    }
+
+    case 'update_task': {
+      let taskId = args.task_id;
+      if (!taskId && args.task_title) {
+        taskId = await fuzzyFindTask(supabase, teamId, args.task_title);
+      }
+      if (!taskId) return { error: 'タスクが見つかりません' };
+
+      const updates: Record<string, string> = {};
+      if (args.title) updates.title = args.title;
+      if (args.description) updates.description = args.description;
+      if (args.status) updates.status = args.status;
+      if (args.priority) updates.priority = args.priority;
+      if (args.due_date) updates.due_date = args.due_date;
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .update(updates)
+        .eq('id', taskId)
+        .select()
+        .single();
+      return error ? { error: error.message } : { success: true, task: data };
+    }
+
+    case 'delete_task': {
+      let taskId = args.task_id;
+      if (!taskId && args.task_title) {
+        taskId = await fuzzyFindTask(supabase, teamId, args.task_title);
+      }
+      if (!taskId) return { error: 'タスクが見つかりません' };
+
+      const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+      return error ? { error: error.message } : { success: true };
+    }
+
+    case 'list_tasks': {
+      let query = supabase.from('tasks').select('*, task_links(*), projects!inner(team_id)').eq('projects.team_id', teamId);
+
+      if (args.project_id) {
+        query = query.eq('project_id', args.project_id);
+      } else if (args.project_name) {
+        const foundProjectId = await fuzzyFindProject(supabase, teamId, args.project_name);
+        if (foundProjectId) query = query.eq('project_id', foundProjectId);
+      }
+
+      if (args.status) query = query.eq('status', args.status);
+      if (args.priority) query = query.eq('priority', args.priority);
+
+      const sortField = args.sort_by || 'due_date';
+      if (sortField === 'due_date') {
+        query = query.order('due_date', { ascending: true, nullsFirst: false });
+      } else {
+        query = query.order(sortField, { ascending: true });
+      }
+
+      const { data, error } = await query;
+      return error ? { error: error.message } : { tasks: data };
+    }
+
+    case 'add_task_link': {
+      let taskId = args.task_id;
+      if (!taskId && args.task_title) {
+        taskId = await fuzzyFindTask(supabase, teamId, args.task_title);
+      }
+      if (!taskId) return { error: 'タスクが見つかりません' };
+
+      const { data, error } = await supabase
+        .from('task_links')
+        .insert({
+          task_id: taskId,
+          url: args.url,
+          label: args.label || null,
+        })
+        .select()
+        .single();
+      return error ? { error: error.message } : { success: true, link: data };
+    }
+
+    case 'navigate': {
+      const pageMap: Record<string, string> = {
+        dashboard: '/dashboard',
+        tasks: '/tasks',
+        settings: '/settings',
+      };
+      const basePath = pageMap[args.page] || '/dashboard';
+      let url = basePath;
+
+      // タスクページのフィルタ
+      if (args.page === 'tasks') {
+        const params = new URLSearchParams();
+
+        // 日付フィルタ
+        if (args.date_filter) {
+          params.set('filter', args.date_filter);
+        }
+
+        // プロジェクトフィルタ
+        let projectId = args.project_id;
+        if (!projectId && args.project_name) {
+          projectId = await fuzzyFindProject(supabase, teamId, args.project_name);
+        }
+        if (projectId) {
+          params.set('project', projectId);
+        }
+
+        const qs = params.toString();
+        if (qs) url = `${basePath}?${qs}`;
+      }
+
+      return { success: true, url, message: `${args.page}ページに遷移します` };
+    }
+
+    case 'update_settings': {
+      const settingsUpdate: Record<string, boolean | string> = {};
+      if (args.show_completed !== undefined) {
+        settingsUpdate.showCompleted = args.show_completed;
+      }
+      if (args.show_delivered !== undefined) {
+        settingsUpdate.showDelivered = args.show_delivered;
+      }
+      if (args.task_view) {
+        settingsUpdate.taskView = args.task_view;
+      }
+      return { success: true, settingsUpdate, message: '設定を変更しました' };
+    }
+
+    default:
+      return { error: `未知の関数: ${name}` };
+  }
+}
