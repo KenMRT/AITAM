@@ -36,6 +36,9 @@ yarn-error.log*
 _memo.md
 _memo_tmp.md
 
+# Claude Code local settings (may contain sensitive data in permission entries)
+.claude/settings.local.json
+
 # vercel
 .vercel
 

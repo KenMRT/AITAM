@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
   }
 
-  const { message, currentProjectId, contextProjectName } = await request.json();
+  const { message, currentProjectId, contextProjectName, numberMapping } = await request.json();
 
   if (!message || typeof message !== 'string') {
     return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
@@ -202,6 +202,19 @@ export async function POST(request: NextRequest) {
   → プロジェクト名の指定がない操作は、必ずこのプロジェクトに対して実行してください。確認の質問は不要です。
   → project_nameに「${contextProjectName}」を使用してください。
   → ユーザーが別のプロジェクト名を明示的に指定した場合のみ、そちらに切り替えてください。`;
+  }
+
+  // ナンバーマッピングをシステムプロンプト用にフォーマット
+  let numberMappingContext = '';
+  if (numberMapping?.tasks?.length > 0) {
+    const taskList = numberMapping.tasks
+      .map((t: { number: number; id: string; title: string; projectName: string }) =>
+        `  ${t.number}: 「${t.title}」(ID: ${t.id}, プロジェクト: ${t.projectName})`
+      )
+      .join('\n');
+    numberMappingContext = `\n\n## 現在画面に表示されているタスク番号
+ユーザーが番号で指定した場合（例:「1を完了にして」「3の期限を変更」）、以下の対応表からtask_idを特定してください。
+${taskList}`;
   }
 
   const models = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
@@ -275,7 +288,7 @@ DB検索側であいまい一致で探します。完全一致でなくても構
 - 操作結果は自然な日本語で簡潔に報告してください（例:「プロジェクト『テスト』を作成しました」）
 - コード、JSON、プログラミング言語の構文を回答に含めないでください
 - Function Callの引数や内部的なIDをユーザーに見せないでください
-- 曖昧な入力で確認が必要な場合は質問してください。合理的に推測できる場合は推測して実行し、結果を報告してください。`;
+- 曖昧な入力で確認が必要な場合は質問してください。合理的に推測できる場合は推測して実行し、結果を報告してください。${numberMappingContext}`;
 
   try {
   // モデルをフォールバック付きで試行

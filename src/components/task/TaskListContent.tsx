@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -13,6 +14,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { Project, Task, TaskLink } from '@/types/database';
 import { useSettings } from '@/lib/SettingsContext';
+import { useTaskNumbers } from '@/lib/TaskNumberContext';
 
 interface TaskWithLinks extends Task {
   task_links: TaskLink[];
@@ -90,7 +92,7 @@ function getDateRange(filter: string): { start: Date; end: Date; label: string }
   return { start: today, end: new Date(9999, 11, 31), label: 'タスク' };
 }
 
-function TaskCard({ task, showProject, projectName }: { task: TaskWithLinks; showProject?: boolean; projectName?: string }) {
+function TaskCard({ task, showProject, projectName, number }: { task: TaskWithLinks; showProject?: boolean; projectName?: string; number?: number }) {
   return (
     <Card
       variant="outlined"
@@ -108,16 +110,23 @@ function TaskCard({ task, showProject, projectName }: { task: TaskWithLinks; sho
     >
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Typography
-            variant="body2"
-            sx={{
-              fontWeight: 500,
-              textDecoration: task.status === '完了' ? 'line-through' : 'none',
-              color: task.status === '完了' ? 'text.secondary' : 'text.primary',
-            }}
-          >
-            {task.title}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+            {number !== undefined && (
+              <Typography variant="caption" sx={{ color: 'text.disabled', fontWeight: 700, fontSize: '0.7rem', flexShrink: 0 }}>
+                {number}
+              </Typography>
+            )}
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 500,
+                textDecoration: task.status === '完了' ? 'line-through' : 'none',
+                color: task.status === '完了' ? 'text.secondary' : 'text.primary',
+              }}
+            >
+              {task.title}
+            </Typography>
+          </Box>
           <Chip
             label={task.status}
             size="small"
@@ -188,6 +197,7 @@ function TaskCard({ task, showProject, projectName }: { task: TaskWithLinks; sho
 export default function TaskListContent({ projects, filterProjectId, dateFilter }: TaskListContentProps) {
   const router = useRouter();
   const { settings } = useSettings();
+  const { setMapping } = useTaskNumbers();
   const isFiltered = !!filterProjectId || !!dateFilter;
 
   // 納品済プロジェクトフィルタ + 完了タスクフィルタ
@@ -214,6 +224,14 @@ export default function TaskListContent({ projects, filterProjectId, dateFilter 
       return new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime();
     });
 
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => {
+      setMapping({
+        projects: [],
+        tasks: flatTasks.map((t, i) => ({ number: i + 1, id: t.id, title: t.title, projectName: t.projectName })),
+      });
+    }, [flatTasks.map(t => t.id).join(',')]);
+
     return (
       <Container maxWidth="sm" sx={{ py: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -239,8 +257,8 @@ export default function TaskListContent({ projects, filterProjectId, dateFilter 
             </CardContent>
           </Card>
         ) : (
-          flatTasks.map((task) => (
-            <TaskCard key={task.id} task={task} showProject projectName={task.projectName} />
+          flatTasks.map((task, i) => (
+            <TaskCard key={task.id} task={task} showProject projectName={task.projectName} number={i + 1} />
           ))
         )}
       </Container>
@@ -280,6 +298,24 @@ export default function TaskListContent({ projects, filterProjectId, dateFilter 
   const hasProjects = sortedProjects.length > 0;
   const hasTasks = sortedProjects.some((p) => p.tasks.length > 0);
 
+  // 通し番号を割り当て
+  let taskCounter = 0;
+  const numberedProjects = sortedProjects.map((p) => ({
+    ...p,
+    tasks: p.tasks.map((t) => ({ ...t, _number: ++taskCounter })),
+  }));
+
+  // マッピング登録
+  useEffect(() => {
+    const tasks = numberedProjects.flatMap((p) =>
+      p.tasks.map((t) => ({ number: t._number, id: t.id, title: t.title, projectName: p.name }))
+    );
+    setMapping({
+      projects: numberedProjects.map((p, i) => ({ number: i + 1, id: p.id, name: p.name })),
+      tasks,
+    });
+  }, [numberedProjects.flatMap(p => p.tasks.map(t => t.id)).join(',')]);
+
   return (
     <Container maxWidth="sm" sx={{ py: 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -318,7 +354,7 @@ export default function TaskListContent({ projects, filterProjectId, dateFilter 
         </Card>
       )}
 
-      {sortedProjects.map((project) => {
+      {numberedProjects.map((project) => {
         if (project.tasks.length === 0) return null;
 
         return (
@@ -341,7 +377,7 @@ export default function TaskListContent({ projects, filterProjectId, dateFilter 
             </Box>
 
             {project.tasks.map((task) => (
-              <TaskCard key={task.id} task={task} />
+              <TaskCard key={task.id} task={task} number={task._number} />
             ))}
           </Box>
         );

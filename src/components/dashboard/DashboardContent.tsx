@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -16,6 +17,7 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import WarningIcon from '@mui/icons-material/Warning';
 import { Project, Task } from '@/types/database';
 import { useSettings } from '@/lib/SettingsContext';
+import { useTaskNumbers } from '@/lib/TaskNumberContext';
 
 interface ProjectWithTasks extends Project {
   tasks: Task[];
@@ -49,15 +51,15 @@ function formatDueDate(dueDate: string): string {
 export default function DashboardContent({ projects }: DashboardContentProps) {
   const router = useRouter();
   const { settings } = useSettings();
+  const { setMapping } = useTaskNumbers();
 
-  // 納品済プロジェクトフィルタ + 完了タスクフィルタ
-  const displayProjects = projects
-    .filter((p) => settings.showDelivered || p.status !== '納品済')
-    .map((p) => settings.showCompleted ? p : { ...p, tasks: p.tasks.filter((t) => t.status !== '完了') });
+  // 納品済プロジェクトフィルタ
+  const activeProjects = projects.filter((p) => settings.showDelivered || p.status !== '納品済');
 
-  const totalProjects = displayProjects.length;
-  const totalTasks = displayProjects.reduce((sum, p) => sum + p.tasks.length, 0);
-  const overdueTasks = displayProjects.reduce(
+  // サマリーは完了タスクも含めた全タスクで計算
+  const totalProjects = activeProjects.length;
+  const totalTasks = activeProjects.reduce((sum, p) => sum + p.tasks.length, 0);
+  const overdueTasks = activeProjects.reduce(
     (sum, p) =>
       sum +
       p.tasks.filter(
@@ -66,8 +68,12 @@ export default function DashboardContent({ projects }: DashboardContentProps) {
     0,
   );
 
+  // 表示用: 完了タスクフィルタ適用
+  const displayProjects = activeProjects
+    .map((p) => settings.showCompleted ? p : { ...p, tasks: p.tasks.filter((t) => t.status !== '完了') });
+
   // 直近タスク: 未完了 & 期限あり、期日順に5件
-  const upcomingTasks = displayProjects
+  const upcomingTasks = activeProjects
     .flatMap((p) =>
       p.tasks
         .filter((t) => t.due_date && t.status !== '完了')
@@ -76,8 +82,16 @@ export default function DashboardContent({ projects }: DashboardContentProps) {
     .sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())
     .slice(0, 5);
 
-  // プロジェクトをタスクの最も近い期日順にソート
-  const sortedProjects = [...displayProjects]
+  // マッピング登録（ダッシュボードの直近タスク）
+  useEffect(() => {
+    setMapping({
+      projects: [],
+      tasks: upcomingTasks.map((t, i) => ({ number: i + 1, id: t.id, title: t.title, projectName: t.projectName })),
+    });
+  }, [upcomingTasks.map(t => t.id).join(',')]);
+
+  // プロジェクトをタスクの最も近い期日順にソート（全タスクで計算）
+  const sortedProjects = [...activeProjects]
     .map((p) => {
       const nearestDue = p.tasks
         .filter((t) => t.due_date && t.status !== '完了')
@@ -106,7 +120,7 @@ export default function DashboardContent({ projects }: DashboardContentProps) {
           <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
             直近タスク
           </Typography>
-          {upcomingTasks.map((task) => {
+          {upcomingTasks.map((task, idx) => {
             const isOverdue = new Date(task.due_date!) < new Date();
             return (
               <Card
@@ -121,9 +135,14 @@ export default function DashboardContent({ projects }: DashboardContentProps) {
                 <CardContent sx={{ py: 1, px: 2, '&:last-child': { pb: 1 } }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                        {task.title}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <Typography variant="caption" sx={{ color: 'text.disabled', fontWeight: 700, fontSize: '0.7rem', flexShrink: 0 }}>
+                          {idx + 1}
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                          {task.title}
+                        </Typography>
+                      </Box>
                       <Typography
                         variant="caption"
                         color="primary"

@@ -7,6 +7,7 @@ import Header from './Header';
 import BottomNav from './BottomNav';
 import ChatBar from '@/components/chat/ChatBar';
 import { useSettings } from '@/lib/SettingsContext';
+import { useTaskNumbers } from '@/lib/TaskNumberContext';
 
 interface ChatResponse {
   reply: string;
@@ -22,6 +23,7 @@ interface MainShellProps {
 export default function MainShell({ children, displayName, teamName }: MainShellProps) {
   const searchParams = useSearchParams();
   const { updateSettings } = useSettings();
+  const { getMapping } = useTaskNumbers();
   // 会話コンテキスト: 直前に操作したプロジェクト
   const contextProjectRef = useRef<{ id: string; name: string } | null>(null);
 
@@ -37,6 +39,7 @@ export default function MainShell({ children, displayName, teamName }: MainShell
         message,
         currentProjectId: urlProjectId || contextProject?.id,
         contextProjectName: !urlProjectId ? contextProject?.name : undefined,
+        numberMapping: getMapping(),
       }),
     });
     const data = await res.json();
