@@ -42,6 +42,11 @@ _memo_tmp.md
 # Agent handoff records (may contain sensitive data)
 .agent/
 
+# Project internal files
+CLAUDE.md
+AGENTS.md
+.env.local.example
+
 # vercel
 .vercel
 
