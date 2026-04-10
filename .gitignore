@@ -39,6 +39,9 @@ _memo_tmp.md
 # Claude Code local settings (may contain sensitive data in permission entries)
 .claude/settings.local.json
 
+# Agent handoff records (may contain sensitive data)
+.agent/
+
 # vercel
 .vercel
 
