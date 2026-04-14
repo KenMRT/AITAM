@@ -225,6 +225,11 @@ export default function DashboardContent({ projects }: DashboardContentProps) {
                       variant="outlined"
                     />
                   </Box>
+                  {project.description && (
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                      {project.description}
+                    </Typography>
+                  )}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
                     <LinearProgress
                       variant="determinate"

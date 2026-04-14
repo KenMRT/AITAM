@@ -375,6 +375,11 @@ export default function TaskListContent({ projects, filterProjectId, dateFilter 
               </Typography>
               <Chip label={project.status} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
             </Box>
+            {project.description && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: -0.5, mb: 1 }}>
+                {project.description}
+              </Typography>
+            )}
 
             {project.tasks.map((task) => (
               <TaskCard key={task.id} task={task} number={task._number} />

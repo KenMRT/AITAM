@@ -14,7 +14,7 @@ export default async function MainLayout({
     redirect('/login');
   }
 
-  // ユーザープロフィールを取得
+  // プロフィール取得
   const { data: profile } = await supabase
     .from('users')
     .select('display_name, current_team_id')
@@ -22,15 +22,12 @@ export default async function MainLayout({
     .single();
 
   const displayName = profile?.display_name || '';
+  const teamId = profile?.current_team_id || '';
 
-  // チーム名を取得
+  // チーム名取得
   let teamName = '';
-  if (profile?.current_team_id) {
-    const { data: team } = await supabase
-      .from('teams')
-      .select('name')
-      .eq('id', profile.current_team_id)
-      .single();
+  if (teamId) {
+    const { data: team } = await supabase.from('teams').select('name').eq('id', teamId).single();
     teamName = team?.name || '';
   }
 
