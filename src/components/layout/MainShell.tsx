@@ -17,7 +17,6 @@ interface ChatResponse {
 interface MainShellProps {
   children: React.ReactNode;
   displayName: string;
-  teamName: string;
 }
 
 // クライアント側で即処理できるコマンドのパターンマッチ
@@ -83,7 +82,7 @@ function tryClientCommand(
   return null;
 }
 
-export default function MainShell({ children, displayName, teamName }: MainShellProps) {
+export default function MainShell({ children, displayName }: MainShellProps) {
   const searchParams = useSearchParams();
   const { updateSettings } = useSettings();
   const { getMapping } = useTaskNumbers();
@@ -123,7 +122,7 @@ export default function MainShell({ children, displayName, teamName }: MainShell
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
-      <Header displayName={displayName} teamName={teamName} />
+      <Header displayName={displayName} />
       <Box
         component="main"
         sx={{

@@ -14,25 +14,16 @@ export default async function MainLayout({
     redirect('/login');
   }
 
-  // プロフィール取得
   const { data: profile } = await supabase
     .from('users')
-    .select('display_name, current_team_id')
+    .select('display_name')
     .eq('id', user.id)
     .single();
 
   const displayName = profile?.display_name || '';
-  const teamId = profile?.current_team_id || '';
-
-  // チーム名取得
-  let teamName = '';
-  if (teamId) {
-    const { data: team } = await supabase.from('teams').select('name').eq('id', teamId).single();
-    teamName = team?.name || '';
-  }
 
   return (
-    <MainShell displayName={displayName} teamName={teamName}>
+    <MainShell displayName={displayName}>
       {children}
     </MainShell>
   );

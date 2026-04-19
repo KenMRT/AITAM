@@ -9,16 +9,5 @@ export default async function RootPage() {
     redirect('/login');
   }
 
-  // チーム未設定ならオンボーディングへ
-  const { data: profile } = await supabase
-    .from('users')
-    .select('current_team_id')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile?.current_team_id) {
-    redirect('/onboarding');
-  }
-
   redirect('/dashboard');
 }

@@ -36,7 +36,7 @@ export default function SignupPage() {
     }
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -46,6 +46,13 @@ export default function SignupPage() {
 
     if (error) {
       setError('登録に失敗しました。もう一度お試しください');
+      setLoading(false);
+      return;
+    }
+
+    // Supabaseは重複メールでもエラーを返さないが、identities が空配列になる
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      setError('このメールアドレスは既に登録されています');
       setLoading(false);
       return;
     }
