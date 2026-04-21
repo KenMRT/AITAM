@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
+import { getUser } from '@/lib/supabase/cached';
 import SettingsContent from '@/components/settings/SettingsContent';
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // user は cached（Layout と共有）、createClient と並列
+  const [user, supabase] = await Promise.all([getUser(), createClient()]);
 
   const { data: profile } = await supabase
     .from('users')

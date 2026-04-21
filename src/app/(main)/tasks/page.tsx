@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { getProfile } from '@/lib/supabase/cached';
 import TaskViewSwitch from '@/components/task/TaskViewSwitch';
 
 interface TasksPageProps {
@@ -6,30 +7,29 @@ interface TasksPageProps {
 }
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
-  const [params, supabase] = await Promise.all([searchParams, createClient()]);
-  const { data: { user } } = await supabase.auth.getUser();
+  // profile は cached（Layout と共有）
+  const [params, profile, supabase] = await Promise.all([
+    searchParams,
+    getProfile(),
+    createClient(),
+  ]);
+  const teamId = profile?.current_team_id;
 
-  // profile と projects を並列取得
   let projectsQuery = supabase
     .from('projects')
     .select('*, tasks(*, task_links(*))')
+    .eq('team_id', teamId!)
     .order('created_at', { ascending: false });
 
   if (params.project) {
     projectsQuery = projectsQuery.eq('id', params.project);
   }
 
-  const [{ data: profile }, { data: projects }] = await Promise.all([
-    supabase.from('users').select('current_team_id').eq('id', user!.id).single(),
-    projectsQuery,
-  ]);
-
-  const teamId = profile?.current_team_id;
-  const filtered = (projects ?? []).filter((p) => p.team_id === teamId);
+  const { data: projects } = await projectsQuery;
 
   return (
     <TaskViewSwitch
-      projects={filtered}
+      projects={projects ?? []}
       filterProjectId={params.project || null}
       dateFilter={params.filter || null}
     />
