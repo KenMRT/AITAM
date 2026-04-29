@@ -1,13 +1,13 @@
 'use client';
 
 import { useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Box } from '@mui/material';
 import Header from './Header';
 import BottomNav from './BottomNav';
 import ChatBar from '@/components/chat/ChatBar';
 import { useSettings } from '@/lib/SettingsContext';
 import { useTaskNumbers } from '@/lib/TaskNumberContext';
+import { useProject } from '@/lib/ProjectContext';
 
 interface ChatResponse {
   reply: string;
@@ -83,9 +83,9 @@ function tryClientCommand(
 }
 
 export default function MainShell({ children, displayName }: MainShellProps) {
-  const searchParams = useSearchParams();
   const { updateSettings } = useSettings();
   const { getMapping } = useTaskNumbers();
+  const { currentProject } = useProject();
   const contextProjectRef = useRef<{ id: string; name: string } | null>(null);
 
   const handleSend = async (message: string): Promise<ChatResponse> => {
@@ -94,16 +94,17 @@ export default function MainShell({ children, displayName }: MainShellProps) {
     if (clientResult) return clientResult;
 
     // AI APIに送信
-    const urlProjectId = searchParams.get('project') || undefined;
-    const contextProject = contextProjectRef.current;
+    // 優先順位: 1. URLプロジェクト（コンテキストから）, 2. 会話コンテキスト
+    const urlProject = currentProject;
+    const conversationProject = contextProjectRef.current;
 
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
-        currentProjectId: urlProjectId || contextProject?.id,
-        contextProjectName: !urlProjectId ? contextProject?.name : undefined,
+        currentProjectId: urlProject?.id || conversationProject?.id,
+        contextProjectName: !urlProject ? conversationProject?.name : undefined,
         numberMapping: getMapping(),
       }),
     });
