@@ -258,7 +258,8 @@ ${taskList}`;
         tools,
       });
 
-      const chat = model.startChat({ history: chatHistory });
+      // デバッグ: 会話履歴を一時的に無効化してテスト
+      const chat = model.startChat({ history: [] });
       let result = await chat.sendMessage(message);
       let response = result.response;
 
