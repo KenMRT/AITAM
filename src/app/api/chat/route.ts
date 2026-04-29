@@ -225,7 +225,9 @@ ${taskList}`;
 
   const models = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
 
-  const systemInstruction = `AIタスク管理アシスタント。Function Callでプロジェクト・タスクを操作。結果は簡潔な日本語で報告。コードやIDは出力しない。
+  const systemInstruction = `AIタスク管理アシスタント。
+
+【重要】プロジェクト・タスクの作成・更新・削除・一覧取得は必ずFunction Callを実行すること。テキストだけで「追加しました」「完了しました」と報告してはいけない。必ずFunction Callの実行結果を元に報告すること。
 
 コンテキスト: user=${user.id} team=${teamId} today=${new Date().toISOString().split('T')[0]}${currentProjectContext}
 
