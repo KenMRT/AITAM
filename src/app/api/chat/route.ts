@@ -168,6 +168,12 @@ export async function POST(request: NextRequest) {
 
   const { message, history, currentProjectId, contextProjectName, numberMapping } = await request.json();
 
+  // ログ: リクエスト受信
+  console.log('=== Chat API Request ===');
+  console.log('Message:', message);
+  console.log('History length:', history?.length || 0);
+  console.log('Current Project ID:', currentProjectId || '(none)');
+  console.log('Context Project Name:', contextProjectName || '(none)');
 
   if (!message || typeof message !== 'string') {
     return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
@@ -260,11 +266,15 @@ ${taskList}`;
 
 結果報告: 簡潔な日本語で報告。ID・コードは出力しない。${numberMappingContext}`;
 
+  // ログ: システム命令（プロジェクトコンテキスト部分のみ）
+  console.log('Project Context in Instruction:', currentProjectContext || '(none)');
+
   try {
   // モデルをフォールバック付きで試行
   let lastError: unknown = null;
   for (const modelName of models) {
     try {
+      console.log('--- Trying model:', modelName, '---');
       const model = genAI.getGenerativeModel({
         model: modelName,
         systemInstruction,
@@ -275,6 +285,10 @@ ${taskList}`;
       let result = await chat.sendMessage(message);
       let response = result.response;
 
+      // ログ: 初回レスポンス
+      console.log('Initial response text:', response.text()?.substring(0, 200) || '(empty)');
+      console.log('Initial function calls:', response.functionCalls()?.map(fc => fc.name) || '(none)');
+
       // Function Callがなくなるまでループ（複合操作・連鎖対応）
       let navigateUrl: string | null = null;
       let contextProject: { id: string; name: string } | null = null;
@@ -283,9 +297,15 @@ ${taskList}`;
       for (let i = 0; i < maxIterations; i++) {
         const functionCalls = response.functionCalls();
         if (!functionCalls || functionCalls.length === 0) break;
+
+        console.log(`Function Call Loop ${i + 1}:`, functionCalls.map(fc => fc.name));
+
         const functionResponses = [];
         for (const fc of functionCalls) {
+          console.log(`  Executing: ${fc.name}`, JSON.stringify(fc.args));
           const execResult = await executeFunction(supabase, user.id, teamId, fc.name, fc.args || {});
+          console.log(`  Result:`, JSON.stringify(execResult).substring(0, 200));
+
           if (fc.name === 'navigate' && execResult.url) {
             navigateUrl = execResult.url;
           }
@@ -311,10 +331,16 @@ ${taskList}`;
           }))
         );
         response = result.response;
+        console.log(`After function response - text:`, response.text()?.substring(0, 200) || '(empty)');
       }
 
       // response.text()が空の場合はフォールバックメッセージを使用
       const replyText = response.text() || '処理が完了しました。';
+      console.log('=== Final Response ===');
+      console.log('Reply text:', replyText.substring(0, 200));
+      console.log('Navigate URL:', navigateUrl || '(none)');
+      console.log('Context Project:', contextProject ? contextProject.name : '(none)');
+
       return NextResponse.json({
         reply: replyText,
         ...(navigateUrl && { navigateUrl }),
