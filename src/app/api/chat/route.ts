@@ -313,8 +313,10 @@ ${taskList}`;
         response = result.response;
       }
 
+      // response.text()が空の場合はフォールバックメッセージを使用
+      const replyText = response.text() || '処理が完了しました。';
       return NextResponse.json({
-        reply: response.text(),
+        reply: replyText,
         ...(navigateUrl && { navigateUrl }),
         ...(contextProject && { contextProject }),
         ...(settingsUpdate && { settingsUpdate }),
