@@ -168,6 +168,13 @@ export async function POST(request: NextRequest) {
 
   const { message, history, currentProjectId, contextProjectName, numberMapping } = await request.json();
 
+  console.log('[DEBUG] Request received:', {
+    message,
+    currentProjectId,
+    contextProjectName,
+    historyLength: history?.length || 0
+  });
+
   if (!message || typeof message !== 'string') {
     return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
   }
@@ -198,6 +205,7 @@ export async function POST(request: NextRequest) {
       .select('name')
       .eq('id', currentProjectId)
       .single();
+    console.log('[DEBUG] Project lookup result:', { currentProjectId, found: !!currentProject, name: currentProject?.name });
     if (currentProject) {
       currentProjectContext = `\n- 【重要】現在のプロジェクト: ${currentProject.name}（ID: ${currentProjectId}）
   → プロジェクト名の指定がない操作は、必ずこのプロジェクトに対して実行してください。確認の質問は不要です。
