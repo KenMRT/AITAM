@@ -265,13 +265,18 @@ ${taskList}`;
       let contextProject: { id: string; name: string } | null = null;
       let settingsUpdate: Record<string, boolean | string> | null = null;
       const maxIterations = 5;
+      let functionCallExecuted = false;
       for (let i = 0; i < maxIterations; i++) {
         const functionCalls = response.functionCalls();
+        console.log(`[DEBUG] Iteration ${i}, functionCalls:`, functionCalls?.map(fc => fc.name) || 'none');
         if (!functionCalls || functionCalls.length === 0) break;
 
+        functionCallExecuted = true;
         const functionResponses = [];
         for (const fc of functionCalls) {
+          console.log(`[DEBUG] Executing function: ${fc.name}`, fc.args);
           const execResult = await executeFunction(supabase, user.id, teamId, fc.name, fc.args || {});
+          console.log(`[DEBUG] Function result:`, execResult);
           if (fc.name === 'navigate' && execResult.url) {
             navigateUrl = execResult.url;
           }
@@ -299,6 +304,7 @@ ${taskList}`;
         response = result.response;
       }
 
+      console.log(`[DEBUG] Final response - functionCallExecuted: ${functionCallExecuted}, reply: ${response.text()?.substring(0, 100)}`);
       return NextResponse.json({
         reply: response.text(),
         ...(navigateUrl && { navigateUrl }),
