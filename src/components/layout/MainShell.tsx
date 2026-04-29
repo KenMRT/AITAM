@@ -133,23 +133,18 @@ export default function MainShell({ children, displayName }: MainShellProps) {
       return clientResult;
     }
 
-    // ユーザーメッセージを履歴に追加（state更新は非同期）
-    addMessage('user', message);
-
     // AI APIに送信
     // 優先順位: 1. URLプロジェクト（コンテキストから）, 2. 会話コンテキスト
     const urlProject = currentProject;
     const conversationProject = contextProjectRef.current;
 
-    // 現在のメッセージを含めた履歴を構築（stateはまだ更新されていないため手動で追加）
-    const historyWithCurrentMessage = [...history, { role: 'user' as const, content: message }];
-
+    // 履歴を送信（現在のメッセージはAPI側でsendMessageで送るため含めない）
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
-        history: historyWithCurrentMessage,
+        history,
         currentProjectId: urlProject?.id || conversationProject?.id,
         contextProjectName: !urlProject ? conversationProject?.name : undefined,
         numberMapping: getMapping(),
@@ -158,7 +153,8 @@ export default function MainShell({ children, displayName }: MainShellProps) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
-    // AIの応答を履歴に追加
+    // 成功後に履歴に追加（リクエスト失敗時は追加しない）
+    addMessage('user', message);
     addMessage('model', data.reply);
 
     if (data.contextProject) {
