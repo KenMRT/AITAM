@@ -166,11 +166,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
   }
 
-  const { message, currentProjectId, contextProjectName, numberMapping } = await request.json();
+  const { message, history, currentProjectId, contextProjectName, numberMapping } = await request.json();
 
   if (!message || typeof message !== 'string') {
     return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
   }
+
+  // 会話履歴をGemini API形式に変換
+  const chatHistory = (history || []).map((msg: { role: 'user' | 'model'; content: string }) => ({
+    role: msg.role,
+    parts: [{ text: msg.content }],
+  }));
 
   // ユーザーの現在のチームを取得
   const { data: profile } = await supabase
@@ -246,7 +252,7 @@ ${taskList}`;
         tools,
       });
 
-      const chat = model.startChat();
+      const chat = model.startChat({ history: chatHistory });
       let result = await chat.sendMessage(message);
       let response = result.response;
 

@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Box } from '@mui/material';
 import Header from './Header';
 import BottomNav from './BottomNav';
@@ -8,6 +9,7 @@ import ChatBar from '@/components/chat/ChatBar';
 import { useSettings } from '@/lib/SettingsContext';
 import { useTaskNumbers } from '@/lib/TaskNumberContext';
 import { useProject } from '@/lib/ProjectContext';
+import { useChat } from '@/lib/ChatContext';
 
 interface ChatResponse {
   reply: string;
@@ -83,15 +85,35 @@ function tryClientCommand(
 }
 
 export default function MainShell({ children, displayName }: MainShellProps) {
+  const pathname = usePathname();
   const { updateSettings } = useSettings();
   const { getMapping } = useTaskNumbers();
   const { currentProject } = useProject();
+  const { history, addMessage, clearHistory } = useChat();
   const contextProjectRef = useRef<{ id: string; name: string } | null>(null);
+
+  // ダッシュボードに遷移したら会話履歴をクリア
+  useEffect(() => {
+    if (pathname === '/dashboard') {
+      clearHistory();
+      contextProjectRef.current = null;
+    }
+  }, [pathname, clearHistory]);
 
   const handleSend = async (message: string): Promise<ChatResponse> => {
     // クライアント側で即処理できるか試す
     const clientResult = tryClientCommand(message, updateSettings);
-    if (clientResult) return clientResult;
+    if (clientResult) {
+      // クライアント処理でも履歴に追加（ダッシュボード遷移時は履歴クリアされる）
+      if (clientResult.navigateUrl !== '/dashboard') {
+        addMessage('user', message);
+        addMessage('model', clientResult.reply);
+      }
+      return clientResult;
+    }
+
+    // ユーザーメッセージを履歴に追加
+    addMessage('user', message);
 
     // AI APIに送信
     // 優先順位: 1. URLプロジェクト（コンテキストから）, 2. 会話コンテキスト
@@ -103,6 +125,7 @@ export default function MainShell({ children, displayName }: MainShellProps) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
+        history,
         currentProjectId: urlProject?.id || conversationProject?.id,
         contextProjectName: !urlProject ? conversationProject?.name : undefined,
         numberMapping: getMapping(),
@@ -110,6 +133,9 @@ export default function MainShell({ children, displayName }: MainShellProps) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
+
+    // AIの応答を履歴に追加
+    addMessage('model', data.reply);
 
     if (data.contextProject) {
       contextProjectRef.current = data.contextProject;
