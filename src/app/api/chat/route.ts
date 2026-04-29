@@ -168,12 +168,13 @@ export async function POST(request: NextRequest) {
 
   const { message, history, currentProjectId, contextProjectName, numberMapping } = await request.json();
 
-  console.log('[DEBUG] Request received:', {
+  const debugInfo = {
     message,
-    currentProjectId,
-    contextProjectName,
+    currentProjectId: currentProjectId || '(なし)',
+    contextProjectName: contextProjectName || '(なし)',
     historyLength: history?.length || 0
-  });
+  };
+  console.log('[DEBUG] Request received:', debugInfo);
 
   if (!message || typeof message !== 'string') {
     return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
@@ -327,8 +328,10 @@ ${taskList}`;
       }
 
       console.log(`[DEBUG] Final response - functionCallExecuted: ${functionCallExecuted}, reply: ${response.text()?.substring(0, 100)}`);
+      // デバッグ: 受信したプロジェクト情報を返答に含める（問題解決後に削除）
+      const debugPrefix = `[DEBUG: projectId=${debugInfo.currentProjectId}]\n`;
       return NextResponse.json({
-        reply: response.text(),
+        reply: debugPrefix + response.text(),
         ...(navigateUrl && { navigateUrl }),
         ...(contextProject && { contextProject }),
         ...(settingsUpdate && { settingsUpdate }),
