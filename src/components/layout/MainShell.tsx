@@ -133,7 +133,7 @@ export default function MainShell({ children, displayName }: MainShellProps) {
       return clientResult;
     }
 
-    // ユーザーメッセージを履歴に追加
+    // ユーザーメッセージを履歴に追加（state更新は非同期）
     addMessage('user', message);
 
     // AI APIに送信
@@ -141,12 +141,15 @@ export default function MainShell({ children, displayName }: MainShellProps) {
     const urlProject = currentProject;
     const conversationProject = contextProjectRef.current;
 
+    // 現在のメッセージを含めた履歴を構築（stateはまだ更新されていないため手動で追加）
+    const historyWithCurrentMessage = [...history, { role: 'user' as const, content: message }];
+
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
-        history,
+        history: historyWithCurrentMessage,
         currentProjectId: urlProject?.id || conversationProject?.id,
         contextProjectName: !urlProject ? conversationProject?.name : undefined,
         numberMapping: getMapping(),
