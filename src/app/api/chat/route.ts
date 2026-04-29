@@ -168,13 +168,6 @@ export async function POST(request: NextRequest) {
 
   const { message, history, currentProjectId, contextProjectName, numberMapping } = await request.json();
 
-  const debugInfo = {
-    message,
-    currentProjectId: currentProjectId || '(なし)',
-    contextProjectName: contextProjectName || '(なし)',
-    historyLength: history?.length || 0
-  };
-  console.log('[DEBUG] Request received:', debugInfo);
 
   if (!message || typeof message !== 'string') {
     return NextResponse.json({ error: 'メッセージが必要です' }, { status: 400 });
@@ -206,7 +199,6 @@ export async function POST(request: NextRequest) {
       .select('name')
       .eq('id', currentProjectId)
       .single();
-    console.log('[DEBUG] Project lookup result:', { currentProjectId, found: !!currentProject, name: currentProject?.name });
     if (currentProject) {
       currentProjectContext = `\n- 【重要】現在のプロジェクト: ${currentProject.name}（ID: ${currentProjectId}）
   → プロジェクト名の指定がない操作は、必ずこのプロジェクトに対して実行してください。確認の質問は不要です。
@@ -288,18 +280,12 @@ ${taskList}`;
       let contextProject: { id: string; name: string } | null = null;
       let settingsUpdate: Record<string, boolean | string> | null = null;
       const maxIterations = 5;
-      let functionCallExecuted = false;
       for (let i = 0; i < maxIterations; i++) {
         const functionCalls = response.functionCalls();
-        console.log(`[DEBUG] Iteration ${i}, functionCalls:`, functionCalls?.map(fc => fc.name) || 'none');
         if (!functionCalls || functionCalls.length === 0) break;
-
-        functionCallExecuted = true;
         const functionResponses = [];
         for (const fc of functionCalls) {
-          console.log(`[DEBUG] Executing function: ${fc.name}`, fc.args);
           const execResult = await executeFunction(supabase, user.id, teamId, fc.name, fc.args || {});
-          console.log(`[DEBUG] Function result:`, execResult);
           if (fc.name === 'navigate' && execResult.url) {
             navigateUrl = execResult.url;
           }
@@ -327,11 +313,8 @@ ${taskList}`;
         response = result.response;
       }
 
-      console.log(`[DEBUG] Final response - functionCallExecuted: ${functionCallExecuted}, reply: ${response.text()?.substring(0, 100)}`);
-      // デバッグ: 受信したプロジェクト情報を返答に含める（問題解決後に削除）
-      const debugPrefix = `[DEBUG: projectId=${debugInfo.currentProjectId}]\n`;
       return NextResponse.json({
-        reply: debugPrefix + response.text(),
+        reply: response.text(),
         ...(navigateUrl && { navigateUrl }),
         ...(contextProject && { contextProject }),
         ...(settingsUpdate && { settingsUpdate }),

@@ -138,10 +138,6 @@ export default function MainShell({ children, displayName }: MainShellProps) {
     const urlProject = currentProject;
     const conversationProject = contextProjectRef.current;
 
-    // デバッグ: 送信されるプロジェクト情報を確認
-    console.log('[DEBUG Client] currentProject:', currentProject);
-    console.log('[DEBUG Client] contextProjectRef:', contextProjectRef.current);
-
     // 履歴を送信（現在のメッセージはAPI側でsendMessageで送るため含めない）
     const res = await fetch('/api/chat', {
       method: 'POST',
