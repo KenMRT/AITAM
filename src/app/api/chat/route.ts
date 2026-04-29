@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { GoogleGenerativeAI, SchemaType, type Tool } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, FunctionCallingMode, type Tool } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
 ${taskList}`;
   }
 
-  const models = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
+  const models = ['gemini-1.5-flash', 'gemini-1.5-pro'];
 
   const systemInstruction = `AIタスク管理アシスタント。
 
@@ -256,6 +256,11 @@ ${taskList}`;
         model: modelName,
         systemInstruction,
         tools,
+        toolConfig: {
+          functionCallingConfig: {
+            mode: FunctionCallingMode.AUTO,
+          },
+        },
       });
 
       // デバッグ: 会話履歴を一時的に無効化してテスト
