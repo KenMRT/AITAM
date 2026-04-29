@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { GoogleGenerativeAI, SchemaType, FunctionCallingMode, type Tool } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, type Tool } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -223,11 +223,9 @@ export async function POST(request: NextRequest) {
 ${taskList}`;
   }
 
-  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-pro-latest'];
+  const models = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
 
-  const systemInstruction = `AIタスク管理アシスタント。
-
-【重要】プロジェクト・タスクの作成・更新・削除・一覧取得は必ずFunction Callを実行すること。テキストだけで「追加しました」「完了しました」と報告してはいけない。必ずFunction Callの実行結果を元に報告すること。
+  const systemInstruction = `AIタスク管理アシスタント。Function Callでプロジェクト・タスクを操作。結果は簡潔な日本語で報告。コードやIDは出力しない。
 
 コンテキスト: user=${user.id} team=${teamId} today=${new Date().toISOString().split('T')[0]}${currentProjectContext}
 
@@ -256,15 +254,9 @@ ${taskList}`;
         model: modelName,
         systemInstruction,
         tools,
-        toolConfig: {
-          functionCallingConfig: {
-            mode: FunctionCallingMode.AUTO,
-          },
-        },
       });
 
-      // デバッグ: 会話履歴を一時的に無効化してテスト
-      const chat = model.startChat({ history: [] });
+      const chat = model.startChat({ history: chatHistory });
       let result = await chat.sendMessage(message);
       let response = result.response;
 
