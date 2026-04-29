@@ -92,6 +92,7 @@ export default function MainShell({ children, displayName }: MainShellProps) {
   const { history, addMessage, clearHistory } = useChat();
   const contextProjectRef = useRef<{ id: string; name: string } | null>(null);
   const prevPathnameRef = useRef<string | null>(null);
+  const prevProjectIdRef = useRef<string | null>(null);
 
   // 他の画面からダッシュボードに戻ってきたときだけ会話履歴をクリア
   useEffect(() => {
@@ -105,6 +106,20 @@ export default function MainShell({ children, displayName }: MainShellProps) {
 
     prevPathnameRef.current = pathname;
   }, [pathname, clearHistory]);
+
+  // プロジェクトが変わったら会話履歴をクリア（別プロジェクトのコンテキストを引き継がない）
+  useEffect(() => {
+    const currentId = currentProject?.id || null;
+    const prevId = prevProjectIdRef.current;
+
+    // プロジェクトが変わった場合（null→値、値→別の値）
+    if (currentId && prevId && currentId !== prevId) {
+      clearHistory();
+      contextProjectRef.current = null;
+    }
+
+    prevProjectIdRef.current = currentId;
+  }, [currentProject?.id, clearHistory]);
 
   const handleSend = async (message: string): Promise<ChatResponse> => {
     // クライアント側で即処理できるか試す
