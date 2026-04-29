@@ -91,13 +91,19 @@ export default function MainShell({ children, displayName }: MainShellProps) {
   const { currentProject } = useProject();
   const { history, addMessage, clearHistory } = useChat();
   const contextProjectRef = useRef<{ id: string; name: string } | null>(null);
+  const prevPathnameRef = useRef<string | null>(null);
 
-  // ダッシュボードに遷移したら会話履歴をクリア
+  // 他の画面からダッシュボードに戻ってきたときだけ会話履歴をクリア
   useEffect(() => {
-    if (pathname === '/dashboard') {
+    const prevPathname = prevPathnameRef.current;
+
+    // 条件: ダッシュボードに来た AND 前回が別の画面だった
+    if (pathname === '/dashboard' && prevPathname && prevPathname !== '/dashboard') {
       clearHistory();
       contextProjectRef.current = null;
     }
+
+    prevPathnameRef.current = pathname;
   }, [pathname, clearHistory]);
 
   const handleSend = async (message: string): Promise<ChatResponse> => {
