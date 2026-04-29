@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
 ${taskList}`;
   }
 
-  const models = ['gemini-1.5-flash', 'gemini-1.5-pro'];
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro-latest'];
 
   const systemInstruction = `AIタスク管理アシスタント。
 
